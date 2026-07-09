@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NylasClient } from "../nylas/client.js";
 import { searchThreads, getThreadMessages } from "../nylas/email.js";
-import { getAvailability } from "../nylas/calendar.js";
+import { getAvailability, OpenSlot } from "../nylas/calendar.js";
 
 // The agent's tool surface, kept deliberately small:
 //   search_threads / get_thread  -> Nylas Email API (read)
@@ -26,6 +26,8 @@ export interface ToolContext {
   timezone: string;
   // Filled in when the agent calls draft_followup.
   draft?: DraftProposal;
+  // Last availability result, kept so the UI can render real slots.
+  slots?: OpenSlot[];
 }
 
 export const toolDefinitions: Anthropic.Tool[] = [
@@ -132,6 +134,7 @@ export async function executeTool(
         durationMinutes: input.duration_minutes ? Number(input.duration_minutes) : 30,
         timezone: ctx.timezone,
       });
+      ctx.slots = slots;
       return JSON.stringify({ count: slots.length, slots });
     }
     case "draft_followup": {

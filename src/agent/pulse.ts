@@ -36,6 +36,7 @@ Subject: <draft subject>
 export interface PulseResult {
   report: string;
   draft?: DraftProposal;
+  slots?: import("../nylas/calendar.js").OpenSlot[];
   turns: number;
 }
 
@@ -117,7 +118,7 @@ export async function runPulse(options: {
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n");
-    return { report, draft: ctx.draft, turns };
+    return { report, draft: ctx.draft, slots: ctx.slots, turns };
   }
 
   throw new Error(`Agent did not finish within ${MAX_TURNS} turns.`);

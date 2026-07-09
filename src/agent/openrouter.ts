@@ -106,7 +106,7 @@ export async function runPulseOpenRouter(options: {
       continue;
     }
 
-    return { report: message.content ?? "", draft: ctx.draft, turns };
+    return { report: message.content ?? "", draft: ctx.draft, slots: ctx.slots, turns };
   }
 
   throw new Error(`Agent did not finish within ${MAX_TURNS} turns.`);
