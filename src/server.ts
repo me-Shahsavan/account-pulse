@@ -4,7 +4,7 @@ import { NylasClient } from "./nylas/client.js";
 import { buildAuthUrl, exchangeCodeForGrant, getGrant } from "./nylas/auth.js";
 import { saveGrant, loadGrant } from "./store.js";
 import { sendMessage } from "./nylas/send.js";
-import { runPulse } from "./agent/pulse.js";
+import { runPulseAuto } from "./agent/run.js";
 
 // Minimal server-rendered UI. Two concerns only:
 //   /auth + /auth/callback  -> Nylas Hosted Auth round-trip (M1)
@@ -96,13 +96,11 @@ app.post("/pulse", async (req, res) => {
   }
   const contact = String(req.body.contact ?? "").trim();
   try {
-    const result = await runPulse({
-      anthropicApiKey: config.anthropicApiKey,
+    const result = await runPulseAuto({
       nylas,
       grantId: grant.grantId,
       ownerEmail: grant.email,
       contactEmail: contact,
-      timezone: config.userTimezone,
     });
 
     // The draft is rendered for review; sending requires the explicit

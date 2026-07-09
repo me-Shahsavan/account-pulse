@@ -5,7 +5,7 @@ import { requireGrant } from "./store.js";
 import { searchThreads } from "./nylas/email.js";
 import { getAvailability } from "./nylas/calendar.js";
 import { sendMessage } from "./nylas/send.js";
-import { runPulse } from "./agent/pulse.js";
+import { runPulseAuto } from "./agent/run.js";
 
 // Usage:
 //   npm run pulse -- <contact-email>            agent pulse (review draft only)
@@ -46,13 +46,11 @@ async function main() {
   }
 
   console.log(`Pulsing ${args.contactEmail} (last ${args.daysBack} days)...\n`);
-  const result = await runPulse({
-    anthropicApiKey: config.anthropicApiKey,
+  const result = await runPulseAuto({
     nylas,
     grantId: grant.grantId,
     ownerEmail: grant.email,
     contactEmail: args.contactEmail,
-    timezone: config.userTimezone,
     daysBack: args.daysBack,
     onProgress: (note) => console.log(`  [${note}]`),
   });

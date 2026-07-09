@@ -63,10 +63,11 @@ export async function getAvailability(
   const daysAhead = options.daysAhead ?? 7;
   const durationMinutes = options.durationMinutes ?? 30;
   // The availability endpoint rejects start/end times that are not
-  // multiples of 5 minutes ("'start_time' must be a multiple of 5 minutes"),
-  // so round up to the next 5-minute boundary.
-  const FIVE_MIN = 5 * 60;
-  const now = Math.ceil(Date.now() / 1000 / FIVE_MIN) * FIVE_MIN;
+  // multiples of 5 minutes ("'start_time' must be a multiple of 5 minutes").
+  // Round up to the next half-hour so returned slots land on clean
+  // :00/:30 times people actually book.
+  const HALF_HOUR = 30 * 60;
+  const now = Math.ceil(Date.now() / 1000 / HALF_HOUR) * HALF_HOUR;
 
   const res = await client.request<{
     time_slots?: { start_time: number; end_time: number }[];
