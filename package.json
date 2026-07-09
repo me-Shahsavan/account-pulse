@@ -1,0 +1,26 @@
+{
+  "name": "account-pulse",
+  "version": "0.1.0",
+  "description": "CRM-style relationship pulse for a contact, built on Nylas v3 email + calendar primitives with a Claude tool-use agent layer.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "pulse": "tsx src/cli.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

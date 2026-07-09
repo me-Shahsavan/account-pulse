@@ -1,0 +1,12 @@
+# secrets & local state
+.env
+.data/
+
+# internal notes (never commit)
+docs/*.md
+NOTES.md
+
+# build & deps
+node_modules/
+dist/
+*.tsbuildinfo
