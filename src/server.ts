@@ -5,6 +5,7 @@ import { buildAuthUrl, exchangeCodeForGrant, getGrant } from "./nylas/auth.js";
 import { saveGrant, loadGrant } from "./store.js";
 import { sendMessage } from "./nylas/send.js";
 import { runPulseAuto } from "./agent/run.js";
+import { listRelationships } from "./nylas/relationships.js";
 
 // Server-rendered UI, no frontend framework. Three concerns:
 //   /auth + /auth/callback  -> Nylas Hosted Auth round-trip
@@ -115,7 +116,27 @@ const STYLES = `
   .banner.err { border-left-color: var(--danger); }
   .center { text-align: center; padding: 60px 0; }
   .big-check { font-size: 52px; }
-  pre.raw { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; white-space: pre-wrap; font-size: 14px; }
+  pre.raw { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; white-space: pre-wrap; font-size: 14px; max-height: 340px; overflow-y: auto; }
+  /* relationships table */
+  table.book { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  table.book th {
+    text-align: left; font: 700 11px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  table.book td { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  table.book tr:hover td { background: var(--panel-2); }
+  .contact-name { font-weight: 600; }
+  .contact-email { font: 12px var(--mono); color: var(--muted); }
+  .badge { font: 11px/1 var(--mono); padding: 5px 10px; border-radius: 99px; white-space: nowrap; }
+  .badge.due { background: #fbbf2422; color: var(--warn); border: 1px solid #fbbf2455; }
+  .badge.cold { background: #60a5fa22; color: #60a5fa; border: 1px solid #60a5fa55; }
+  .badge.active { background: var(--accent-dim); color: var(--accent); border: 1px solid #34d39955; }
+  .rowbtn { background: transparent; border: 1px solid var(--line); color: var(--accent);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .rowbtn:hover { border-color: var(--accent); }
+  .section-title { display: flex; align-items: baseline; gap: 12px; margin: 40px 0 0; }
+  .section-title h2 { margin: 0; font-size: 20px; }
+  .section-title span { color: var(--muted); font-size: 13px; }
   /* loading overlay */
   #loading {
     display: none; position: fixed; inset: 0; background: rgba(12,15,20,.92);
@@ -175,8 +196,9 @@ function layout(body: string, grantEmail?: string | null): string {
 // cards. Falls back to a raw <pre> if the structure isn't recognized.
 function parseReport(report: string): Map<string, string> | null {
   const names = ["SUMMARY", "LAST TOUCH", "OPEN ITEMS", "PROPOSED SLOTS", "DRAFT"];
+  // Tolerate markdown variations: "SUMMARY", "**SUMMARY**", "## SUMMARY".
   const pattern = new RegExp(
-    `(?:^|\\n)\\s*\\*{0,2}(${names.join("|")})\\*{0,2}\\s*\\n`,
+    `(?:^|\\n)\\s*#{0,4}\\s*\\*{0,2}(${names.join("|")})\\*{0,2}:?\\s*\\n`,
     "g",
   );
   const hits = [...report.matchAll(pattern)];
@@ -250,29 +272,79 @@ app.get("/auth/callback", async (req, res) => {
   }
 });
 
-app.get("/", (_req, res) => {
+app.get("/", async (_req, res) => {
   const grant = loadGrant();
+
+  if (!grant) {
+    res.send(
+      layout(
+        `<div class="hero">
+          <h1>Your business lives in your inbox.<br><em>Know where every relationship stands.</em></h1>
+          <p>Account Pulse reads your real email threads and calendar through Nylas, ranks your
+          working relationships, and drafts the follow-up — but never sends without you.</p>
+          <a class="btn" href="/auth">Connect your account</a>
+          <div class="steps">
+            <div class="step"><b>1 · Read</b>Threads with each contact + open calendar slots, via Nylas.</div>
+            <div class="step"><b>2 · Reason</b>An agent summarizes, finds open items, drafts a follow-up.</div>
+            <div class="step"><b>3 · You decide</b>Nothing is sent until you review and confirm.</div>
+          </div>
+        </div>`,
+      ),
+    );
+    return;
+  }
+
+  // Connected: show the book of business — real relationships aggregated
+  // from the last 30 days of threads, reply-owed first.
+  let tableHtml = "";
+  try {
+    const rows = await listRelationships(nylas, grant.grantId, grant.email);
+    tableHtml = rows.length
+      ? `<table class="book">
+          <tr><th>Contact</th><th>Status</th><th>Last touch</th><th>Threads</th><th></th></tr>
+          ${rows
+            .slice(0, 20)
+            .map((r) => {
+              const badge =
+                r.owesReply === "you"
+                  ? `<span class="badge due">reply due</span>`
+                  : r.staleDays > 14
+                    ? `<span class="badge cold">going cold</span>`
+                    : `<span class="badge active">active</span>`;
+              const last =
+                r.staleDays === 0 ? "today" : r.staleDays === 1 ? "yesterday" : `${r.staleDays}d ago`;
+              return `<tr>
+                <td><div class="contact-name">${esc(r.name ?? r.email.split("@")[0])}</div>
+                    <div class="contact-email">${esc(r.email)}</div></td>
+                <td>${badge}</td>
+                <td>${esc(last)}</td>
+                <td>${r.threads}</td>
+                <td><form method="post" action="/pulse" onsubmit="return showLoading()" style="margin:0">
+                      <input type="hidden" name="contact" value="${esc(r.email)}">
+                      <button class="rowbtn" type="submit">Pulse →</button>
+                    </form></td>
+              </tr>`;
+            })
+            .join("")}
+        </table>`
+      : `<div class="banner">No human threads found in the last 30 days. Try pulsing an address directly below.</div>`;
+  } catch (err) {
+    tableHtml = `<div class="banner err">Could not load relationships: ${esc(String(err))}</div>`;
+  }
+
   res.send(
     layout(
-      `<div class="hero">
-        <h1>How is your relationship<br>with <em>that contact</em> doing?</h1>
-        <p>A grounded answer from your real email threads and real calendar availability —
-        Nylas v3 primitives underneath, a Claude tool-use agent on top.</p>
-        ${
-          grant
-            ? `<form class="searchbar" method="post" action="/pulse" onsubmit="return showLoading()">
-                 <input type="email" name="contact" placeholder="contact@example.com" required autofocus>
-                 <button class="btn" type="submit">Get pulse</button>
-               </form>`
-            : `<a class="btn" href="/auth">Connect your account via Nylas Hosted Auth</a>`
-        }
-        <div class="steps">
-          <div class="step"><b>1 · Read</b>Threads with the contact + open calendar slots, via Nylas.</div>
-          <div class="step"><b>2 · Reason</b>The agent summarizes, finds open items, drafts a follow-up.</div>
-          <div class="step"><b>3 · You decide</b>Nothing is sent until you review and confirm.</div>
-        </div>
-      </div>`,
-      grant?.email,
+      `<div class="hero" style="padding:28px 0 0">
+        <h1 style="font-size:32px">Where does every relationship stand?</h1>
+        <p>Aggregated from your real inbox via Nylas — reply-owed first, then freshest.</p>
+        <form class="searchbar" method="post" action="/pulse" onsubmit="return showLoading()">
+          <input type="email" name="contact" placeholder="or pulse any address: contact@example.com" required>
+          <button class="btn" type="submit">Get pulse</button>
+        </form>
+      </div>
+      <div class="section-title"><h2>Book of business</h2><span>last 30 days · top 20</span></div>
+      ${tableHtml}`,
+      grant.email,
     ),
   );
 });
