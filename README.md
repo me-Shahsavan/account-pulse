@@ -5,9 +5,9 @@ a summary built from real email threads, open action items, and meeting slots
 proposed from real calendar availability — powered by Nylas v3 primitives with
 an LLM agent layer on top.
 
-🎥 **Demo video:** [youtu.be/kdjRjKJaFu0](https://youtu.be/kdjRjKJaFu0)
+🎥 **Demo video** — click to watch:
 
-![Account Pulse](docs/screenshots/dashboard.png)
+[![Watch the demo](https://img.youtube.com/vi/kdjRjKJaFu0/maxresdefault.jpg)](https://youtu.be/kdjRjKJaFu0)
 
 ## Why I built this
 
@@ -34,7 +34,7 @@ the grounding rules, and the decision about what an agent may and may not do.
 - **Only after explicit confirmation** is the draft sent via the Nylas send
   API, returning a real message id
 
-![Pulse](docs/screenshots/pulse.png)
+![Account Pulse](docs/screenshots/dashboard.png)
 
 ## Architecture
 
