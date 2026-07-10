@@ -50,7 +50,7 @@ function toIso(epochSeconds?: number): string {
   return epochSeconds ? new Date(epochSeconds * 1000).toISOString() : "";
 }
 
-export function stripHtml(html: string, maxLength = 2000): string {
+export function stripHtml(html: string, maxLength = 1200): string {
   const text = html
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -74,7 +74,7 @@ export async function searchThreads(
   grantId: string,
   contactEmail: string,
   daysBack = 90,
-  maxItems = 100,
+  maxItems = 50,
 ): Promise<ThreadSummary[]> {
   const after = Math.floor(Date.now() / 1000) - daysBack * 24 * 60 * 60;
   const raw = await client.listAll<RawThread>(
@@ -104,7 +104,7 @@ export async function getThreadMessages(
   grantId: string,
   threadId: string,
   ownerEmail: string,
-  maxItems = 25,
+  maxItems = 12,
 ): Promise<MessageDetail[]> {
   const raw = await client.listAll<RawMessage>(
     `/v3/grants/${grantId}/messages`,

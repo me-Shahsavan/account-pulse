@@ -25,6 +25,9 @@ export const config = {
   // At least one must be set to run a pulse; raw mode needs neither.
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
   openrouterApiKey: optional("OPENROUTER_API_KEY"),
+  // Claude Sonnet 4.6 gives the best pulse quality; Haiku 4.5 is ~3x
+  // cheaper and fine for development runs.
+  openrouterModel: process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.6",
   callbackUri: process.env.CALLBACK_URI ?? "http://localhost:3000/auth/callback",
   port: Number(process.env.PORT ?? 3000),
   userTimezone: process.env.USER_TIMEZONE ?? "UTC",

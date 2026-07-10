@@ -20,7 +20,11 @@ export async function runPulseAuto(options: {
     return runPulse({ ...common, anthropicApiKey: config.anthropicApiKey });
   }
   if (config.openrouterApiKey) {
-    return runPulseOpenRouter({ ...common, openrouterApiKey: config.openrouterApiKey });
+    return runPulseOpenRouter({
+      ...common,
+      openrouterApiKey: config.openrouterApiKey,
+      model: config.openrouterModel,
+    });
   }
   throw new Error(
     "No LLM key configured. Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY in .env.",
