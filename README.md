@@ -5,7 +5,7 @@ a summary built from real email threads, open action items, and meeting slots
 proposed from real calendar availability — powered by Nylas v3 primitives with
 an LLM agent layer on top.
 
-🎥 **2-minute demo:** _[coming soon]_
+🎥 **Demo video:** [youtu.be/kdjRjKJaFu0](https://youtu.be/kdjRjKJaFu0)
 
 ![Landing](docs/screenshots/landing.png)
 
