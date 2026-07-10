@@ -5,11 +5,11 @@ a summary built from real email threads, open action items, and meeting slots
 proposed from real calendar availability — powered by Nylas v3 primitives with
 an LLM agent layer on top.
 
-## ▶️ Demo video (2 min)
+## ▶️ Demo video (3 min)
 
 <div align="center">
 
-[![▶ WATCH THE DEMO — 5 minutes](https://img.youtube.com/vi/kdjRjKJaFu0/maxresdefault.jpg)](https://youtu.be/kdjRjKJaFu0)
+[![▶ WATCH THE DEMO — 3 minutes](https://img.youtube.com/vi/kdjRjKJaFu0/maxresdefault.jpg)](https://youtu.be/kdjRjKJaFu0)
 
 **[▶ &nbsp;Watch on YouTube →](https://youtu.be/kdjRjKJaFu0)**
 
