@@ -22,22 +22,34 @@ const esc = (s: string) =>
 
 const STYLES = `
   :root {
-    --bg: #0c0f14; --panel: #141a22; --panel-2: #1a212c; --line: #232c39;
-    --text: #e8edf4; --muted: #8b98a9; --accent: #34d399; --accent-dim: #10b98122;
-    --warn: #fbbf24; --danger: #f87171; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --bg: #fafafa; --panel: #ffffff; --panel-2: #f4f4f5; --line: #eaeaea;
+    --text: #171717; --muted: #666666; --accent: #0070f3; --accent-dim: rgba(0,112,243,.08);
+    --warn: #b45309; --warn-bg: rgba(245,166,35,.12); --ok: #16a34a; --ok-bg: rgba(22,163,74,.1);
+    --info: #0070f3; --info-bg: rgba(0,112,243,.08);
+    --danger: #ee0000; --btn-bg: #171717; --btn-fg: #ffffff;
+    --overlay: rgba(250,250,250,.92); --shadow: 0 1px 3px rgba(0,0,0,.06);
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  html[data-theme="dark"] {
+    --bg: #000000; --panel: #0a0a0a; --panel-2: #111111; --line: #262626;
+    --text: #ededed; --muted: #888888; --accent: #3291ff; --accent-dim: rgba(50,145,255,.12);
+    --warn: #f5a623; --warn-bg: rgba(245,166,35,.12); --ok: #34d399; --ok-bg: rgba(52,211,153,.1);
+    --info: #3291ff; --info-bg: rgba(50,145,255,.1);
+    --danger: #ff4444; --btn-bg: #ededed; --btn-fg: #000000;
+    --overlay: rgba(0,0,0,.92); --shadow: none;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.6 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-    min-height: 100vh;
+    min-height: 100vh; transition: background .2s ease, color .2s ease;
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .nav {
     display: flex; align-items: center; gap: 14px;
     padding: 14px 28px; border-bottom: 1px solid var(--line);
-    background: rgba(12,15,20,.85); position: sticky; top: 0; backdrop-filter: blur(8px);
+    background: var(--bg); position: sticky; top: 0; z-index: 10;
   }
   .logo { font-weight: 800; letter-spacing: .3px; font-size: 17px; }
   .logo .dot { color: var(--accent); }
@@ -48,9 +60,15 @@ const STYLES = `
   .spacer { flex: 1; }
   .who { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
   .pulse-dot {
-    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
     box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: beat 2s infinite;
   }
+  .theme-toggle {
+    background: transparent; border: 1px solid var(--line); color: var(--muted);
+    width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px;
+    display: grid; place-items: center;
+  }
+  .theme-toggle:hover { border-color: var(--muted); }
   @keyframes beat { 0% {box-shadow:0 0 0 0 rgba(52,211,153,.5);} 70% {box-shadow:0 0 0 9px rgba(52,211,153,0);} 100% {box-shadow:0 0 0 0 rgba(52,211,153,0);} }
   .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
   .hero { text-align: center; padding: 48px 0 8px; }
@@ -67,11 +85,11 @@ const STYLES = `
     font-size: 16px; padding: 10px 12px;
   }
   .btn {
-    background: var(--accent); color: #04120c; font-weight: 700; border: 0;
-    padding: 12px 22px; border-radius: 10px; font-size: 15px; cursor: pointer;
-    transition: transform .06s ease, filter .15s ease;
+    background: var(--btn-bg); color: var(--btn-fg); font-weight: 600; border: 1px solid var(--btn-bg);
+    padding: 11px 22px; border-radius: 8px; font-size: 15px; cursor: pointer;
+    transition: transform .06s ease, opacity .15s ease;
   }
-  .btn:hover { filter: brightness(1.08); }
+  .btn:hover { opacity: .85; }
   .btn:active { transform: scale(.98); }
   .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
   .btn.danger-outline { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
@@ -83,7 +101,8 @@ const STYLES = `
   .step b { display: block; color: var(--text); margin-bottom: 4px; font-size: 13px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
   .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; box-shadow: var(--shadow);
   }
   .card.full { grid-column: 1 / -1; }
   .card h3 {
@@ -117,20 +136,26 @@ const STYLES = `
   .center { text-align: center; padding: 60px 0; }
   .big-check { font-size: 52px; }
   pre.raw { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; white-space: pre-wrap; font-size: 14px; max-height: 340px; overflow-y: auto; }
-  /* relationships table */
-  table.book { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  /* relationships table — fixed-height scroll area with sticky header */
+  .book-wrap {
+    margin-top: 14px; max-height: 420px; overflow-y: auto;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  table.book { width: 100%; border-collapse: collapse; }
   table.book th {
     text-align: left; font: 700 11px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase;
-    color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line);
+    color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); z-index: 1;
   }
   table.book td { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
   table.book tr:hover td { background: var(--panel-2); }
   .contact-name { font-weight: 600; }
   .contact-email { font: 12px var(--mono); color: var(--muted); }
   .badge { font: 11px/1 var(--mono); padding: 5px 10px; border-radius: 99px; white-space: nowrap; }
-  .badge.due { background: #fbbf2422; color: var(--warn); border: 1px solid #fbbf2455; }
-  .badge.cold { background: #60a5fa22; color: #60a5fa; border: 1px solid #60a5fa55; }
-  .badge.active { background: var(--accent-dim); color: var(--accent); border: 1px solid #34d39955; }
+  .badge.due { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); }
+  .badge.cold { background: var(--info-bg); color: var(--info); border: 1px solid var(--info); }
+  .badge.active { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
   .rowbtn { background: transparent; border: 1px solid var(--line); color: var(--accent);
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
   .rowbtn:hover { border-color: var(--accent); }
@@ -139,7 +164,7 @@ const STYLES = `
   .section-title span { color: var(--muted); font-size: 13px; }
   /* loading overlay */
   #loading {
-    display: none; position: fixed; inset: 0; background: rgba(12,15,20,.92);
+    display: none; position: fixed; inset: 0; background: var(--overlay);
     z-index: 50; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
   }
   #loading.on { display: flex; }
@@ -167,13 +192,27 @@ const LOADING_JS = `
     setInterval(() => { i = Math.min(i + 1, phases.length - 1); phase.textContent = phases[i]; }, 2600);
     return true;
   }
+  function toggleTheme() {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("theme", next);
+  }
 `;
+
+// Applied before CSS paints to avoid a theme flash. Defaults to the OS
+// preference; the toggle persists the choice in localStorage.
+const THEME_BOOT_JS = `(function(){
+  var t = localStorage.getItem("theme") ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = t;
+})();`;
 
 function layout(body: string, grantEmail?: string | null): string {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Account Pulse</title>
+<script>${THEME_BOOT_JS}</script>
 <style>${STYLES}</style>
 </head><body>
 <nav class="nav">
@@ -189,6 +228,7 @@ function layout(body: string, grantEmail?: string | null): string {
          </form>`
       : `<a class="who" href="/auth">connect account →</a>`
   }
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">◐</button>
 </nav>
 <div id="loading"><div class="spinner"></div><div class="phase"></div></div>
 <main class="wrap">${body}</main>
@@ -319,7 +359,7 @@ app.get("/", async (_req, res) => {
   try {
     const rows = await listRelationships(nylas, grant.grantId, grant.email);
     tableHtml = rows.length
-      ? `<table class="book">
+      ? `<div class="book-wrap"><table class="book">
           <tr><th>Contact</th><th>Status</th><th>Last touch</th><th>Threads</th><th></th></tr>
           ${rows
             .slice(0, 20)
@@ -345,7 +385,7 @@ app.get("/", async (_req, res) => {
               </tr>`;
             })
             .join("")}
-        </table>`
+        </table></div>`
       : `<div class="banner">No human threads found in the last 30 days. Try pulsing an address directly below.</div>`;
   } catch (err) {
     tableHtml = `<div class="banner err">Could not load relationships: ${esc(String(err))}</div>`;
