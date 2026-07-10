@@ -23,7 +23,10 @@ interface RawThread {
 }
 
 // Skip obvious machine senders so the dashboard shows people, not robots.
-const NOISE = /no-?reply|notification|mailer|newsletter|donotreply|updates@|noreply/i;
+// Heuristic, not perfect: role addresses and marketing subdomains are the
+// bulk of inbox noise for a personal/business Gmail.
+const NOISE =
+  /no-?reply|notification|mailer|newsletter|donotreply|updates@|^(info|postmaster|hello|support|news|marketing|sales|community|team|contact|billing|offers|deals|promo)@|@(e?comm?|email|mail|news|marketing|reply|e)\./i;
 
 export async function listRelationships(
   client: NylasClient,
