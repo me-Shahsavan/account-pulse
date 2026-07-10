@@ -25,6 +25,14 @@ export function loadGrant(): StoredGrant | null {
   }
 }
 
+export function clearGrant(): void {
+  try {
+    fs.rmSync(GRANT_FILE);
+  } catch {
+    // already gone
+  }
+}
+
 export function requireGrant(): StoredGrant {
   const grant = loadGrant();
   if (!grant) {

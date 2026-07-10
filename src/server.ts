@@ -1,8 +1,8 @@
 import express from "express";
 import { config } from "./config.js";
 import { NylasClient } from "./nylas/client.js";
-import { buildAuthUrl, exchangeCodeForGrant, getGrant } from "./nylas/auth.js";
-import { saveGrant, loadGrant } from "./store.js";
+import { buildAuthUrl, exchangeCodeForGrant, getGrant, deleteGrant } from "./nylas/auth.js";
+import { saveGrant, loadGrant, clearGrant } from "./store.js";
 import { sendMessage } from "./nylas/send.js";
 import { runPulseAuto } from "./agent/run.js";
 import { listRelationships } from "./nylas/relationships.js";
@@ -182,7 +182,11 @@ function layout(body: string, grantEmail?: string | null): string {
   <span class="spacer"></span>
   ${
     grantEmail
-      ? `<span class="who"><span class="pulse-dot"></span>${esc(grantEmail)}</span>`
+      ? `<span class="who"><span class="pulse-dot"></span>${esc(grantEmail)}</span>
+         <form method="post" action="/disconnect" style="margin:0"
+               onsubmit="return confirm('Disconnect this account? The Nylas grant will be revoked.')">
+           <button class="rowbtn" style="color:var(--muted)" type="submit">disconnect</button>
+         </form>`
       : `<a class="who" href="/auth">connect account →</a>`
   }
 </nav>
@@ -270,6 +274,21 @@ app.get("/auth/callback", async (req, res) => {
   } catch (err) {
     res.status(500).send(layout(`<div class="banner err">Auth failed: ${esc(String(err))}</div>`));
   }
+});
+
+app.post("/disconnect", async (_req, res) => {
+  const grant = loadGrant();
+  if (grant) {
+    try {
+      // Revoke server-side first so the grant can't be used again...
+      await deleteGrant(nylas, grant.grantId);
+    } catch (err) {
+      // ...but clear local state regardless (grant may already be invalid).
+      console.warn(`Grant revoke failed: ${String(err)}`);
+    }
+    clearGrant();
+  }
+  res.redirect("/");
 });
 
 app.get("/", async (_req, res) => {

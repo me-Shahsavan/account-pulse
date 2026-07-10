@@ -51,6 +51,13 @@ export async function exchangeCodeForGrant(
   return { grantId: body.grant_id, email: body.email ?? "" };
 }
 
+// Revoke a grant server-side: DELETE /v3/grants/{id}. After this the
+// grant can no longer access the provider account; the user would need
+// to go through hosted auth again.
+export async function deleteGrant(client: NylasClient, grantId: string): Promise<void> {
+  await client.requestRaw(`/v3/grants/${grantId}`, { method: "DELETE" });
+}
+
 // Sanity check used after auth: GET /v3/grants/{id}
 export async function getGrant(client: NylasClient, grantId: string) {
   const res = await client.request<{
