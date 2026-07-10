@@ -7,7 +7,7 @@ an LLM agent layer on top.
 
 🎥 **Demo video:** [youtu.be/kdjRjKJaFu0](https://youtu.be/kdjRjKJaFu0)
 
-![Landing](docs/screenshots/landing.png)
+![Account Pulse](docs/screenshots/dashboard.png)
 
 ## Why I built this
 
@@ -34,7 +34,6 @@ the grounding rules, and the decision about what an agent may and may not do.
 - **Only after explicit confirmation** is the draft sent via the Nylas send
   API, returning a real message id
 
-![Dashboard](docs/screenshots/dashboard.png)
 ![Pulse](docs/screenshots/pulse.png)
 
 ## Architecture
