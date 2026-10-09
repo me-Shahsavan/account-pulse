@@ -15,7 +15,7 @@ proposed from real calendar availability — built on an email and calendar API
 
 ![Book of business](docs/screenshots/02-book-of-business.png)
 
-**3. Run a pulse** — the agent reads real threads and real availability through its tools, one tool call at a time.
+**3. Run a pulse** — the page dims while the agent works through its tools, one call at a time: search threads, read the relevant ones, check availability, draft.
 
 ![Agent thinking](docs/screenshots/03-agent-thinking.png)
 
