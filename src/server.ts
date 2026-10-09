@@ -1,0 +1,520 @@
+import express from "express";
+import { config } from "./config.js";
+import { ApiClient } from "./provider/client.js";
+import { buildAuthUrl, exchangeCodeForGrant, getGrant, deleteGrant } from "./provider/auth.js";
+import { saveGrant, loadGrant, clearGrant } from "./store.js";
+import { sendMessage } from "./provider/send.js";
+import { runPulseAuto } from "./agent/run.js";
+import { listRelationships } from "./provider/relationships.js";
+
+// Server-rendered UI, no frontend framework. Three concerns:
+//   /auth + /auth/callback  -> hosted auth round-trip
+//   /  + /pulse             -> pulse form + rendered report
+//   /send                   -> explicit human confirmation, then send via the email API
+
+const app = express();
+app.use(express.urlencoded({ extended: false }));
+
+const provider = new ApiClient({ apiKey: config.apiKey, apiUri: config.apiUri });
+
+const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const STYLES = `
+  :root {
+    --bg: #fafafa; --panel: #ffffff; --panel-2: #f4f4f5; --line: #eaeaea;
+    --text: #171717; --muted: #666666; --accent: #0070f3; --accent-dim: rgba(0,112,243,.08);
+    --warn: #b45309; --warn-bg: rgba(245,166,35,.12); --ok: #16a34a; --ok-bg: rgba(22,163,74,.1);
+    --info: #0070f3; --info-bg: rgba(0,112,243,.08);
+    --danger: #ee0000; --btn-bg: #171717; --btn-fg: #ffffff;
+    --overlay: rgba(250,250,250,.92); --shadow: 0 1px 3px rgba(0,0,0,.06);
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  html[data-theme="dark"] {
+    --bg: #000000; --panel: #0a0a0a; --panel-2: #111111; --line: #262626;
+    --text: #ededed; --muted: #888888; --accent: #3291ff; --accent-dim: rgba(50,145,255,.12);
+    --warn: #f5a623; --warn-bg: rgba(245,166,35,.12); --ok: #34d399; --ok-bg: rgba(52,211,153,.1);
+    --info: #3291ff; --info-bg: rgba(50,145,255,.1);
+    --danger: #ff4444; --btn-bg: #ededed; --btn-fg: #000000;
+    --overlay: rgba(0,0,0,.92); --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    min-height: 100vh; transition: background .2s ease, color .2s ease;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .nav {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px; border-bottom: 1px solid var(--line);
+    background: var(--bg); position: sticky; top: 0; z-index: 10;
+  }
+  .logo { font-weight: 800; letter-spacing: .3px; font-size: 17px; }
+  .logo .dot { color: var(--accent); }
+  .tag {
+    font: 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line);
+    padding: 4px 8px; border-radius: 99px; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .spacer { flex: 1; }
+  .who { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: beat 2s infinite;
+  }
+  .theme-toggle {
+    background: transparent; border: 1px solid var(--line); color: var(--muted);
+    width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px;
+    display: grid; place-items: center;
+  }
+  .theme-toggle:hover { border-color: var(--muted); }
+  @keyframes beat { 0% {box-shadow:0 0 0 0 rgba(52,211,153,.5);} 70% {box-shadow:0 0 0 9px rgba(52,211,153,0);} 100% {box-shadow:0 0 0 0 rgba(52,211,153,0);} }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+  .hero { text-align: center; padding: 48px 0 8px; }
+  .hero h1 { font-size: 40px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -.5px; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { color: var(--muted); max-width: 560px; margin: 0 auto 34px; }
+  .searchbar {
+    display: flex; gap: 10px; max-width: 560px; margin: 0 auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px;
+  }
+  .searchbar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .searchbar input {
+    flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
+    font-size: 16px; padding: 10px 12px;
+  }
+  .btn {
+    background: var(--btn-bg); color: var(--btn-fg); font-weight: 600; border: 1px solid var(--btn-bg);
+    padding: 11px 22px; border-radius: 8px; font-size: 15px; cursor: pointer;
+    transition: transform .06s ease, opacity .15s ease;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:active { transform: scale(.98); }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .btn.danger-outline { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .steps { display: flex; gap: 14px; justify-content: center; margin-top: 44px; flex-wrap: wrap; }
+  .step {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; font-size: 13px; color: var(--muted); max-width: 200px; text-align: left;
+  }
+  .step b { display: block; color: var(--text); margin-bottom: 4px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card h3 {
+    margin: 0 0 10px; font: 700 11px/1 var(--mono); letter-spacing: 1.6px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .card h3::before { content: "▸ "; color: var(--accent); }
+  .card p, .card li { color: var(--text); font-size: 15px; margin: 0; }
+  .card ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font: 13px/1 var(--mono); background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--text); padding: 8px 12px; border-radius: 99px;
+  }
+  .chip::before { content: "◷ "; color: var(--accent); }
+  .email-preview { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .email-head { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+  .email-head b { color: var(--text); font-weight: 600; }
+  .email-preview input, .email-preview textarea {
+    width: 100%; background: transparent; border: 0; outline: 0; color: var(--text);
+    font: 15px/1.6 ui-sans-serif, system-ui, sans-serif; resize: vertical;
+  }
+  .email-preview textarea { padding: 14px 16px; min-height: 220px; }
+  .email-preview input { font-weight: 600; }
+  .send-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  .note { font-size: 13px; color: var(--muted); }
+  .note b { color: var(--warn); }
+  .mono { font-family: var(--mono); font-size: 13px; color: var(--accent); word-break: break-all; }
+  .banner { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--panel); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; font-size: 14px; color: var(--muted); }
+  .banner.err { border-left-color: var(--danger); }
+  .center { text-align: center; padding: 60px 0; }
+  .big-check { font-size: 52px; }
+  pre.raw { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; white-space: pre-wrap; font-size: 14px; max-height: 340px; overflow-y: auto; }
+  /* relationships table — fixed-height scroll area with sticky header */
+  .book-wrap {
+    margin-top: 14px; max-height: 420px; overflow-y: auto;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  table.book { width: 100%; border-collapse: collapse; }
+  table.book th {
+    text-align: left; font: 700 11px/1 var(--mono); letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); z-index: 1;
+  }
+  table.book td { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  table.book tr:hover td { background: var(--panel-2); }
+  .contact-name { font-weight: 600; }
+  .contact-email { font: 12px var(--mono); color: var(--muted); }
+  .badge { font: 11px/1 var(--mono); padding: 5px 10px; border-radius: 99px; white-space: nowrap; }
+  .badge.due { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); }
+  .badge.cold { background: var(--info-bg); color: var(--info); border: 1px solid var(--info); }
+  .badge.active { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+  .rowbtn { background: transparent; border: 1px solid var(--line); color: var(--accent);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .rowbtn:hover { border-color: var(--accent); }
+  .section-title { display: flex; align-items: baseline; gap: 12px; margin: 40px 0 0; }
+  .section-title h2 { margin: 0; font-size: 20px; }
+  .section-title span { color: var(--muted); font-size: 13px; }
+  /* loading overlay */
+  #loading {
+    display: none; position: fixed; inset: 0; background: var(--overlay);
+    z-index: 50; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  }
+  #loading.on { display: flex; }
+  .spinner { width: 42px; height: 42px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading .phase { color: var(--muted); font: 14px var(--mono); }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .hero h1 { font-size: 30px; } }
+`;
+
+const LOADING_JS = `
+  const phases = [
+    "connecting to the email API…",
+    "pulling email threads…",
+    "reading the ones that matter…",
+    "checking real calendar availability…",
+    "agent is thinking (Claude tool use)…",
+    "drafting the follow-up…",
+  ];
+  function showLoading() {
+    const el = document.getElementById("loading");
+    el.classList.add("on");
+    let i = 0;
+    const phase = el.querySelector(".phase");
+    phase.textContent = phases[0];
+    setInterval(() => { i = Math.min(i + 1, phases.length - 1); phase.textContent = phases[i]; }, 2600);
+    return true;
+  }
+  function toggleTheme() {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("theme", next);
+  }
+`;
+
+// Applied before CSS paints to avoid a theme flash. Defaults to the OS
+// preference; the toggle persists the choice in localStorage.
+const THEME_BOOT_JS = `(function(){
+  var t = localStorage.getItem("theme") ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = t;
+})();`;
+
+function layout(body: string, grantEmail?: string | null): string {
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account Pulse</title>
+<script>${THEME_BOOT_JS}</script>
+<style>${STYLES}</style>
+</head><body>
+<nav class="nav">
+  <span class="logo"><span class="dot">●</span> Account&nbsp;Pulse</span>
+  <span class="tag">email + calendar API · Claude tool use</span>
+  <span class="spacer"></span>
+  ${
+    grantEmail
+      ? `<span class="who"><span class="pulse-dot"></span>${esc(grantEmail)}</span>
+         <form method="post" action="/disconnect" style="margin:0"
+               onsubmit="return confirm('Disconnect this account? The grant will be revoked.')">
+           <button class="rowbtn" style="color:var(--muted)" type="submit">disconnect</button>
+         </form>`
+      : `<a class="who" href="/auth">connect account →</a>`
+  }
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">◐</button>
+</nav>
+<div id="loading"><div class="spinner"></div><div class="phase"></div></div>
+<main class="wrap">${body}</main>
+<script>${LOADING_JS}</script>
+</body></html>`;
+}
+
+// The agent's report follows a fixed section structure; parse it into
+// cards. Falls back to a raw <pre> if the structure isn't recognized.
+function parseReport(report: string): Map<string, string> | null {
+  const names = ["SUMMARY", "LAST TOUCH", "OPEN ITEMS", "PROPOSED SLOTS", "DRAFT"];
+  // Tolerate markdown variations: "SUMMARY", "**SUMMARY**", "## SUMMARY".
+  const pattern = new RegExp(
+    `(?:^|\\n)\\s*#{0,4}\\s*\\*{0,2}(${names.join("|")})\\*{0,2}:?\\s*\\n`,
+    "g",
+  );
+  const hits = [...report.matchAll(pattern)];
+  if (hits.length < 3) return null;
+
+  const sections = new Map<string, string>();
+  for (let i = 0; i < hits.length; i++) {
+    const start = hits[i].index! + hits[i][0].length;
+    const end = i + 1 < hits.length ? hits[i + 1].index! : report.length;
+    const text = report
+      .slice(start, end)
+      .replace(/^-{3,}\s*$/gm, "")
+      .replace(/\*\*/g, "")
+      .trim();
+    sections.set(hits[i][1], text);
+  }
+  return sections;
+}
+
+function renderList(text: string): string {
+  const items = text
+    .split("\n")
+    .map((l) => l.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+  return `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
+}
+
+app.get("/auth", (_req, res) => {
+  res.redirect(
+    buildAuthUrl({
+      apiUri: config.apiUri,
+      clientId: config.clientId,
+      redirectUri: config.callbackUri,
+    }),
+  );
+});
+
+app.get("/auth/callback", async (req, res) => {
+  const code = String(req.query.code ?? "");
+  if (!code) {
+    res.status(400).send(layout(`<div class="banner err">Missing ?code in callback.</div>`));
+    return;
+  }
+  try {
+    const token = await exchangeCodeForGrant(provider, {
+      clientId: config.clientId,
+      apiKey: config.apiKey,
+      redirectUri: config.callbackUri,
+      code,
+    });
+    const grant = await getGrant(provider, token.grantId);
+    saveGrant({
+      grantId: token.grantId,
+      email: token.email || grant.email,
+      connectedAt: new Date().toISOString(),
+    });
+    res.send(
+      layout(
+        `<div class="center">
+          <div class="big-check">✅</div>
+          <h1>Account connected</h1>
+          <p class="note">Grant <span class="mono">${esc(token.grantId)}</span><br>
+          for <b>${esc(grant.email)}</b> · status: ${esc(grant.grant_status)}</p>
+          <p><a class="btn" href="/">Run a pulse →</a></p>
+        </div>`,
+        grant.email,
+      ),
+    );
+  } catch (err) {
+    res.status(500).send(layout(`<div class="banner err">Auth failed: ${esc(String(err))}</div>`));
+  }
+});
+
+app.post("/disconnect", async (_req, res) => {
+  const grant = loadGrant();
+  if (grant) {
+    try {
+      // Revoke server-side first so the grant can't be used again...
+      await deleteGrant(provider, grant.grantId);
+    } catch (err) {
+      // ...but clear local state regardless (grant may already be invalid).
+      console.warn(`Grant revoke failed: ${String(err)}`);
+    }
+    clearGrant();
+  }
+  res.redirect("/");
+});
+
+app.get("/", async (_req, res) => {
+  const grant = loadGrant();
+
+  if (!grant) {
+    res.send(
+      layout(
+        `<div class="hero">
+          <h1>Your business lives in your inbox.<br><em>Know where every relationship stands.</em></h1>
+          <p>Account Pulse reads your real email threads and calendar through the email API, ranks your
+          working relationships, and drafts the follow-up — but never sends without you.</p>
+          <a class="btn" href="/auth">Connect your account</a>
+          <div class="steps">
+            <div class="step"><b>1 · Read</b>Threads with each contact + open calendar slots, via the email API.</div>
+            <div class="step"><b>2 · Reason</b>An agent summarizes, finds open items, drafts a follow-up.</div>
+            <div class="step"><b>3 · You decide</b>Nothing is sent until you review and confirm.</div>
+          </div>
+        </div>`,
+      ),
+    );
+    return;
+  }
+
+  // Connected: show the book of business — real relationships aggregated
+  // from the last 30 days of threads, reply-owed first.
+  let tableHtml = "";
+  try {
+    const rows = await listRelationships(provider, grant.grantId, grant.email);
+    tableHtml = rows.length
+      ? `<div class="book-wrap"><table class="book">
+          <tr><th>Contact</th><th>Status</th><th>Last touch</th><th>Threads</th><th></th></tr>
+          ${rows
+            .slice(0, 20)
+            .map((r) => {
+              const badge =
+                r.owesReply === "you"
+                  ? `<span class="badge due">reply due</span>`
+                  : r.staleDays > 14
+                    ? `<span class="badge cold">going cold</span>`
+                    : `<span class="badge active">active</span>`;
+              const last =
+                r.staleDays === 0 ? "today" : r.staleDays === 1 ? "yesterday" : `${r.staleDays}d ago`;
+              return `<tr>
+                <td><div class="contact-name">${esc(r.name ?? r.email.split("@")[0])}</div>
+                    <div class="contact-email">${esc(r.email)}</div></td>
+                <td>${badge}</td>
+                <td>${esc(last)}</td>
+                <td>${r.threads}</td>
+                <td><form method="post" action="/pulse" onsubmit="return showLoading()" style="margin:0">
+                      <input type="hidden" name="contact" value="${esc(r.email)}">
+                      <button class="rowbtn" type="submit">Pulse →</button>
+                    </form></td>
+              </tr>`;
+            })
+            .join("")}
+        </table></div>`
+      : `<div class="banner">No human threads found in the last 30 days. Try pulsing an address directly below.</div>`;
+  } catch (err) {
+    tableHtml = `<div class="banner err">Could not load relationships: ${esc(String(err))}</div>`;
+  }
+
+  res.send(
+    layout(
+      `<div class="hero" style="padding:28px 0 0">
+        <h1 style="font-size:32px">Where does every relationship stand?</h1>
+        <p>Aggregated from your real inbox via the email API — reply-owed first, then freshest.</p>
+        <form class="searchbar" method="post" action="/pulse" onsubmit="return showLoading()">
+          <input type="email" name="contact" placeholder="or pulse any address: contact@example.com" required>
+          <button class="btn" type="submit">Get pulse</button>
+        </form>
+      </div>
+      <div class="section-title"><h2>Book of business</h2><span>last 30 days · top 20</span></div>
+      ${tableHtml}`,
+      grant.email,
+    ),
+  );
+});
+
+app.post("/pulse", async (req, res) => {
+  const grant = loadGrant();
+  if (!grant) {
+    res.redirect("/auth");
+    return;
+  }
+  const contact = String(req.body.contact ?? "").trim();
+  try {
+    const result = await runPulseAuto({
+      provider,
+      grantId: grant.grantId,
+      ownerEmail: grant.email,
+      contactEmail: contact,
+    });
+
+    const sections = parseReport(result.report);
+    const reportHtml = sections
+      ? `<div class="grid">
+           <div class="card full"><h3>Summary</h3><p>${esc(sections.get("SUMMARY") ?? "")}</p></div>
+           <div class="card"><h3>Last touch</h3><p>${esc(sections.get("LAST TOUCH") ?? "")}</p></div>
+           <div class="card"><h3>Open items</h3>${renderList(sections.get("OPEN ITEMS") ?? "")}</div>
+           <div class="card full"><h3>Proposed slots</h3>
+             <div class="chips">${(result.slots ?? [])
+               .slice(0, 6)
+               .map((s) => `<span class="chip">${esc(s.startLocal)}</span>`)
+               .join("") || esc(sections.get("PROPOSED SLOTS") ?? "")}</div>
+           </div>
+         </div>`
+      : `<pre class="raw">${esc(result.report)}</pre>`;
+
+    // The draft is editable before sending — the agent proposes,
+    // the human edits and disposes.
+    const draftHtml = result.draft
+      ? `<div class="card full" style="margin-top:16px">
+           <h3>Draft follow-up · review before sending</h3>
+           <form method="post" action="/send" onsubmit="return showLoading()">
+             <div class="email-preview">
+               <div class="email-head">
+                 <span>To&nbsp;&nbsp;&nbsp;<b>${esc(result.draft.to)}</b></span>
+                 <span>Subj&nbsp;<input name="subject" value="${esc(result.draft.subject)}"></span>
+               </div>
+               <textarea name="body">${esc(result.draft.body)}</textarea>
+             </div>
+             <input type="hidden" name="to" value="${esc(result.draft.to)}">
+             <div class="send-row">
+               <button class="btn" type="submit">Send</button>
+               <a class="btn ghost" href="/">Discard</a>
+               <span class="note"><b>Not sent yet.</b> Edit freely — sending only happens on your click.</span>
+             </div>
+           </form>
+         </div>`
+      : `<div class="banner" style="margin-top:16px">The agent did not record a draft.</div>`;
+
+    res.send(
+      layout(
+        `<p><a href="/">← new pulse</a></p>
+         <h1 style="margin:6px 0 4px">Pulse · <span style="color:var(--accent)">${esc(contact)}</span></h1>
+         <p class="note">Grounded in real mailbox data · agent finished in ${result.turns} turns</p>
+         ${reportHtml}
+         ${draftHtml}`,
+        grant.email,
+      ),
+    );
+  } catch (err) {
+    res
+      .status(500)
+      .send(
+        layout(
+          `<div class="banner err">Pulse failed: ${esc(String(err))}</div><p><a href="/">← back</a></p>`,
+          grant.email,
+        ),
+      );
+  }
+});
+
+app.post("/send", async (req, res) => {
+  const grant = loadGrant();
+  if (!grant) {
+    res.redirect("/auth");
+    return;
+  }
+  try {
+    const sent = await sendMessage(provider, grant.grantId, {
+      to: [{ email: String(req.body.to) }],
+      subject: String(req.body.subject),
+      body: String(req.body.body),
+    });
+    res.send(
+      layout(
+        `<div class="center">
+           <div class="big-check">📨</div>
+           <h1>Sent</h1>
+           <p class="note">message id from the email API</p>
+           <p class="mono">${esc(sent.messageId)}</p>
+           <p style="margin-top:26px"><a class="btn" href="/">Run another pulse</a></p>
+         </div>`,
+        grant.email,
+      ),
+    );
+  } catch (err) {
+    res
+      .status(500)
+      .send(layout(`<div class="banner err">Send failed: ${esc(String(err))}</div>`, grant.email));
+  }
+});
+
+app.listen(config.port, () => {
+  console.log(`Account Pulse: http://localhost:${config.port}`);
+  console.log(`Connect an account: http://localhost:${config.port}/auth`);
+});

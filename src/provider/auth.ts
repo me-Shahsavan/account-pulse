@@ -1,0 +1,70 @@
+import { ApiClient } from "./client.js";
+
+// the v3 email API Hosted Auth (OAuth 2.0):
+//   1. Redirect the user to /v3/connect/auth
+//   2. Provider consent -> callback with ?code=
+//   3. Exchange the code at /v3/connect/token -> grant_id
+// All later data calls are scoped to that grant: /v3/grants/{grant_id}/...
+// Note: in v3 the token exchange's client_secret is the email API API key.
+
+export function buildAuthUrl(options: {
+  apiUri: string;
+  clientId: string;
+  redirectUri: string;
+  provider?: "google" | "microsoft" | "imap";
+}): string {
+  const params = new URLSearchParams({
+    client_id: options.clientId,
+    redirect_uri: options.redirectUri,
+    response_type: "code",
+    access_type: "online",
+  });
+  if (options.provider) params.set("provider", options.provider);
+  return `${options.apiUri}/v3/connect/auth?${params.toString()}`;
+}
+
+export interface TokenExchangeResult {
+  grantId: string;
+  email: string;
+}
+
+export async function exchangeCodeForGrant(
+  client: ApiClient,
+  options: { clientId: string; apiKey: string; redirectUri: string; code: string },
+): Promise<TokenExchangeResult> {
+  // /v3/connect/token returns a flat body (no {data} envelope).
+  const body = await client.requestRaw("/v3/connect/token", {
+    method: "POST",
+    body: {
+      client_id: options.clientId,
+      client_secret: options.apiKey,
+      grant_type: "authorization_code",
+      code: options.code,
+      redirect_uri: options.redirectUri,
+      code_verifier: "provider",
+    },
+  });
+
+  if (!body.grant_id) {
+    throw new Error("Token exchange succeeded but no grant_id in response.");
+  }
+  return { grantId: body.grant_id, email: body.email ?? "" };
+}
+
+// Revoke a grant server-side: DELETE /v3/grants/{id}. After this the
+// grant can no longer access the provider account; the user would need
+// to go through hosted auth again.
+export async function deleteGrant(client: ApiClient, grantId: string): Promise<void> {
+  await client.requestRaw(`/v3/grants/${grantId}`, { method: "DELETE" });
+}
+
+// Sanity check used after auth: GET /v3/grants/{id}
+export async function getGrant(client: ApiClient, grantId: string) {
+  const res = await client.request<{
+    id: string;
+    email: string;
+    provider: string;
+    grant_status: string;
+  }>(`/v3/grants/${grantId}`);
+  return res.data;
+}

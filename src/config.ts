@@ -1,0 +1,34 @@
+import "dotenv/config";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `Missing required env var ${name}. Copy .env.example to .env and fill it in.`,
+    );
+  }
+  return value;
+}
+
+function optional(name: string): string | undefined {
+  const value = process.env[name];
+  // Treat obvious placeholders as unset.
+  if (!value || value.includes("REPLACE_ME")) return undefined;
+  return value;
+}
+
+export const config = {
+  apiKey: required("EMAIL_API_KEY"),
+  clientId: required("EMAIL_API_CLIENT_ID"),
+  apiUri: process.env.EMAIL_API_URI ?? "https://api.us.provider.com",
+  // LLM provider: Anthropic direct, or OpenRouter (same Claude model).
+  // At least one must be set to run a pulse; raw mode needs neither.
+  anthropicApiKey: optional("ANTHROPIC_API_KEY"),
+  openrouterApiKey: optional("OPENROUTER_API_KEY"),
+  // Claude Sonnet 4.6 gives the best pulse quality; Haiku 4.5 is ~3x
+  // cheaper and fine for development runs.
+  openrouterModel: process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.6",
+  callbackUri: process.env.CALLBACK_URI ?? "http://localhost:3000/auth/callback",
+  port: Number(process.env.PORT ?? 3000),
+  userTimezone: process.env.USER_TIMEZONE ?? "UTC",
+};
