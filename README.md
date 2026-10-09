@@ -5,19 +5,37 @@ a summary built from real email threads, open action items, and meeting slots
 proposed from real calendar availability — built on an email and calendar API
 (hosted auth, threads, availability, send) with an LLM agent layer on top.
 
-## Screenshots
+## How it works, in 7 screens
 
-**Book of business** — the last 30 days of threads aggregated per contact: who is owed a reply, what is going cold.
+**1. Connect an account** — one hosted-auth round trip; the grant is stored locally.
 
-![Book of business](docs/screenshots/01-book-of-business.png)
+![Account connected](docs/screenshots/01-connect.png)
 
-**Pulse on one contact** — summary, last touch, open items and real open slots, plus a draft follow-up the agent cannot send on its own.
+**2. Book of business** — the last 30 days of threads aggregated per contact: who is owed a reply, what is going cold.
 
-![Pulse](docs/screenshots/02-pulse.png)
+![Book of business](docs/screenshots/02-book-of-business.png)
 
-**After the human confirms** — the draft lands in the contact's inbox as a real message.
+**3. Run a pulse** — the agent reads real threads and real availability through its tools, one tool call at a time.
 
-![Sent email](docs/screenshots/04-sent-email.png)
+![Agent thinking](docs/screenshots/03-agent-thinking.png)
+
+**4. The pulse** — summary, last touch, open items and real open slots, plus a draft follow-up.
+
+![Pulse](docs/screenshots/04-pulse.png)
+
+**5. Review before sending** — the draft is editable; the agent has no send tool, so nothing goes out until you click.
+
+![Draft and confirm](docs/screenshots/05-draft-confirm.png)
+
+**6. Sent** — the send API returns a real message id.
+
+![Sent](docs/screenshots/06-sent.png)
+
+**7. In the contact's inbox** — the follow-up lands as a normal email.
+
+![Sent email](docs/screenshots/07-sent-email.png)
+
+Addresses in the screenshots are blurred or replaced with placeholders.
 
 ## Why I built this
 
